@@ -29,27 +29,31 @@ def trim_whitespace(image):
     return image
 
 # ✅ Resize proportionally to fill a 5x2 ratio box, based on cell size
-def resize_to_fill_ratio_box(image, cell_width_px, cell_height_px, target_ratio=5 / 2):
+def resize_to_fill_ratio_box(image, cell_width_px, cell_height_px, target_ratio=5 / 2, buffer_ratio=0.9):
     img_w, img_h = image.size
     img_ratio = img_w / img_h
 
-    # Step 1: Resize according to target ratio logic
+    # Apply buffer
+    max_width = int(cell_width_px * buffer_ratio)
+    max_height = int(cell_height_px * buffer_ratio)
+
+    # Fit based on target ratio logic
     if img_ratio > target_ratio:
-        # Wide logo → fill height
-        target_height = cell_height_px
+        # Wide logo — fill height
+        target_height = max_height
         target_width = int(target_height * img_ratio)
     else:
-        # Tall logo → fill width
-        target_width = cell_width_px
+        # Tall logo — fill width
+        target_width = max_width
         target_height = int(target_width / img_ratio)
 
-    # Step 2: Clamp to max size of the cell
-    if target_width > cell_width_px:
-        target_width = int(cell_width_px)
+    # Clamp to buffer box
+    if target_width > max_width:
+        target_width = max_width
         target_height = int(target_width / img_ratio)
 
-    if target_height > cell_height_px:
-        target_height = int(cell_height_px)
+    if target_height > max_height:
+        target_height = max_height
         target_width = int(target_height * img_ratio)
 
     return image.resize((target_width, target_height), Image.LANCZOS)
