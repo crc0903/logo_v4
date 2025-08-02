@@ -19,15 +19,21 @@ def load_preloaded_logos():
             logos[name] = image
     return logos
 
-# ✅ Resize proportionally to fit inside 5x2 inch box
-def resize_to_fit_box(image, max_width_in=5.0, max_height_in=2.0):
-    max_width_px = int(max_width_in * 96)
-    max_height_px = int(max_height_in * 96)
+# ✅ Resize proportionally and center in fixed 5x2 box with transparent padding
+def resize_to_fit_box_with_padding(image, box_width_in=5.0, box_height_in=2.0):
+    box_w_px = int(box_width_in * 96)
+    box_h_px = int(box_height_in * 96)
 
     img_w, img_h = image.size
-    ratio = min(max_width_px / img_w, max_height_px / img_h)
+    ratio = min(box_w_px / img_w, box_h_px / img_h)
     new_size = (int(img_w * ratio), int(img_h * ratio))
-    return image.resize(new_size, Image.LANCZOS)
+    resized = image.resize(new_size, Image.LANCZOS)
+
+    padded = Image.new("RGBA", (box_w_px, box_h_px), (255, 255, 255, 0))
+    paste_x = (box_w_px - resized.width) // 2
+    paste_y = (box_h_px - resized.height) // 2
+    padded.paste(resized, (paste_x, paste_y), resized)
+    return padded
 
 def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_row):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -48,22 +54,28 @@ def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_r
         col = idx % cols
         row = idx // cols
 
-        # Resize to fit within 5x2 inches (or cell size, whichever is smaller)
-        resized = resize_to_fit_box(logo, max_width_in=min(5, cell_width / 96), max_height_in=min(2, cell_height / 96))
+        # Resize and pad each logo to exactly 5x2 inches (or less if cell is smaller)
+        resized = resize_to_fit_box_with_padding(
+            logo,
+            box_width_in=min(5.0, cell_width / 96),
+            box_height_in=min(2.0, cell_height / 96)
+        )
 
         img_stream = io.BytesIO()
         resized.save(img_stream, format="PNG")
         img_stream.seek(0)
 
-        # Center inside the cell
+        # Center in the cell
         x_offset = (cell_width - resized.width) / 2
         y_offset = (cell_height - resized.height) / 2
         left = left_margin + Inches((col * cell_width + x_offset) / 96)
         top = top_margin + Inches((row * cell_height + y_offset) / 96)
 
-        slide.shapes.add_picture(img_stream, left, top,
-                                 width=Inches(resized.width / 96),
-                                 height=Inches(resized.height / 96))
+        slide.shapes.add_picture(
+            img_stream, left, top,
+            width=Inches(resized.width / 96),
+            height=Inches(resized.height / 96)
+        )
 
 # --- Streamlit UI ---
 st.title("Logo Grid PowerPoint Exporter")
