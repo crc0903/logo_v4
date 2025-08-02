@@ -78,21 +78,26 @@ def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_r
         trimmed = trim_whitespace(logo)
         resized, box_width, box_height = resize_to_fill_5x2_box(trimmed, int(cell_width), int(cell_height))
 
+        # Ensure consistent cell centering (regardless of box size)
+        cell_left = col * cell_width
+        cell_top = row * cell_height
+
+        # Center logo within its cell
+        x_offset = (cell_width - resized.width) / 2
+        y_offset = (cell_height - resized.height) / 2
+        left = left_margin + Inches((cell_left + x_offset) / 96)
+        top = top_margin + Inches((cell_top + y_offset) / 96)
+
         img_stream = io.BytesIO()
         resized.save(img_stream, format="PNG")
         img_stream.seek(0)
-
-        # Center the logo inside the 5x2 box, and box inside the cell
-        x_offset = (cell_width - box_width) / 2 + (box_width - resized.width) / 2
-        y_offset = (cell_height - box_height) / 2 + (box_height - resized.height) / 2
-        left = left_margin + Inches((col * cell_width + x_offset) / 96)
-        top = top_margin + Inches((row * cell_height + y_offset) / 96)
 
         slide.shapes.add_picture(
             img_stream, left, top,
             width=Inches(resized.width / 96),
             height=Inches(resized.height / 96)
         )
+
 
 # --- Streamlit UI ---
 st.title("Logo Grid PowerPoint Exporter")
