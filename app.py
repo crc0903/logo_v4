@@ -1,4 +1,3 @@
-
 import streamlit as st
 from PIL import Image
 import os
@@ -20,11 +19,20 @@ def load_preloaded_logos():
             logos[name] = image
     return logos
 
-def resize_to_fit(image, target_width, target_height):
+def resize_to_height_and_pad(image, target_height=80, max_width=250):
     img_w, img_h = image.size
-    ratio = min(target_width / img_w, target_height / img_h)
-    new_size = (int(img_w * ratio), int(img_h * ratio))
-    return image.resize(new_size, Image.LANCZOS)
+    aspect_ratio = img_w / img_h
+    new_width = int(target_height * aspect_ratio)
+    resized = image.resize((new_width, target_height), Image.LANCZOS)
+
+    if new_width < max_width:
+        # Create a transparent background and center the logo
+        padded = Image.new("RGBA", (max_width, target_height), (255, 255, 255, 0))
+        paste_x = (max_width - new_width) // 2
+        padded.paste(resized, (paste_x, 0), resized)
+        return padded
+    else:
+        return resized
 
 def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_row):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -44,7 +52,7 @@ def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_r
     for idx, logo in enumerate(logos):
         col = idx % cols
         row = idx // cols
-        resized = resize_to_fit(logo, cell_width, cell_height)
+        resized = resize_to_height_and_pad(logo, target_height=int(cell_height), max_width=int(cell_width))
 
         img_stream = io.BytesIO()
         resized.save(img_stream, format="PNG")
@@ -52,7 +60,9 @@ def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_r
 
         left = left_margin + Inches(col * (canvas_width_in / cols))
         top = top_margin + Inches(row * (canvas_height_in / rows))
-        slide.shapes.add_picture(img_stream, left, top, width=Inches(resized.width / 96), height=Inches(resized.height / 96))
+        slide.shapes.add_picture(img_stream, left, top,
+                                 width=Inches(resized.width / 96),
+                                 height=Inches(resized.height / 96))
 
 st.title("Logo Grid PowerPoint Exporter")
 st.markdown("Upload logos or use preloaded ones below:")
@@ -80,7 +90,8 @@ if st.button("Generate PowerPoint"):
         st.warning("Please upload or select logos.")
     else:
         prs = Presentation()
-        create_logo_slide(prs, images, canvas_width_in, canvas_height_in, logos_per_row if logos_per_row > 0 else None)
+        create_logo_slide(prs, images, canvas_width_in, canvas_height_in,
+                          logos_per_row if logos_per_row > 0 else None)
 
         output = io.BytesIO()
         prs.save(output)
