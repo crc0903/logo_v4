@@ -33,17 +33,26 @@ def resize_to_fill_ratio_box(image, cell_width_px, cell_height_px, target_ratio=
     img_w, img_h = image.size
     img_ratio = img_w / img_h
 
+    # Step 1: Resize according to target ratio logic
     if img_ratio > target_ratio:
-        # Logo is wider than 5:2 — fill height, scale width
+        # Wide logo → fill height
         target_height = cell_height_px
         target_width = int(target_height * img_ratio)
     else:
-        # Logo is taller than 5:2 — fill width, scale height
+        # Tall logo → fill width
         target_width = cell_width_px
         target_height = int(target_width / img_ratio)
 
-    resized = image.resize((target_width, target_height), Image.LANCZOS)
-    return resized
+    # Step 2: Clamp to max size of the cell
+    if target_width > cell_width_px:
+        target_width = int(cell_width_px)
+        target_height = int(target_width / img_ratio)
+
+    if target_height > cell_height_px:
+        target_height = int(cell_height_px)
+        target_width = int(target_height * img_ratio)
+
+    return image.resize((target_width, target_height), Image.LANCZOS)
 
 def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_row):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
