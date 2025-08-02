@@ -1,5 +1,5 @@
 import streamlit as st
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageDraw
 import os
 import io
 import math
@@ -9,43 +9,47 @@ from pptx.util import Inches
 PRELOADED_LOGO_DIR = "preloaded_logos"
 
 def load_preloaded_logos():
-    logos = {}
+    logos = []
     if not os.path.exists(PRELOADED_LOGO_DIR):
         os.makedirs(PRELOADED_LOGO_DIR)
     for file in os.listdir(PRELOADED_LOGO_DIR):
         if file.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
             name = os.path.splitext(file)[0]
             image = Image.open(os.path.join(PRELOADED_LOGO_DIR, file)).convert("RGBA")
-            logos[name] = image
+            logos.append((name.lower(), image))
     return logos
 
-# ✅ Trim white or transparent space around the logo
 def trim_whitespace(image):
-    bg = Image.new(image.mode, image.size, (255, 255, 255, 0))  # transparent background
+    bg = Image.new(image.mode, image.size, (255, 255, 255, 0))  # transparent
     diff = ImageChops.difference(image, bg)
     bbox = diff.getbbox()
-    if bbox:
-        return image.crop(bbox)
-    return image
+    return image.crop(bbox) if bbox else image
 
-# ✅ Resize to fill either width or height of 5x2 box
-def resize_to_fill_ratio_box(image, cell_width_px, cell_height_px, buffer_ratio=0.9):
+def resize_to_fill_ratio_box(image, target_w, target_h, buffer=0.9):
     img_w, img_h = image.size
+    box_ratio = target_w / target_h
     img_ratio = img_w / img_h
 
-    max_width = int(cell_width_px * buffer_ratio)
-    max_height = int(cell_height_px * buffer_ratio)
+    max_w = int(target_w * buffer)
+    max_h = int(target_h * buffer)
 
-    if img_ratio >= (max_width / max_height):
-        # Fill width, scale height
-        new_width = max_width
-        new_height = int(new_width / img_ratio)
+    if img_ratio > box_ratio:
+        new_w = max_w
+        new_h = int(max_w / img_ratio)
     else:
-        # Fill height, scale width
-        new_height = max_height
-        new_width = int(new_height * img_ratio)
+        new_h = max_h
+        new_w = int(max_h * img_ratio)
 
-    return image.resize((new_width, new_height), Image.LANCZOS)
+    return image.resize((new_w, new_h), Image.LANCZOS)
+
+def add_debug_box(image, box_w, box_h):
+    box = Image.new("RGBA", (box_w, box_h), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(box)
+    draw.rectangle([0, 0, box_w - 1, box_h - 1], outline="gray", width=2)
+    x = (box_w - image.width) // 2
+    y = (box_h - image.height) // 2
+    box.paste(image, (x, y), image)
+    return box
 
 def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_row):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -56,41 +60,42 @@ def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_r
     cols = logos_per_row if logos_per_row else max(1, round(math.sqrt(logo_count * canvas_width_in / canvas_height_in)))
     rows = math.ceil(logo_count / cols)
 
-    cell_width = canvas_width_px / cols
-    cell_height = canvas_height_px / rows
+    cell_w = canvas_width_px // cols
+    cell_h = canvas_height_px // rows
 
     left_margin = Inches((10 - canvas_width_in) / 2)
     top_margin = Inches((7.5 - canvas_height_in) / 2)
 
-    for idx, logo in enumerate(logos):
-        col = idx % cols
-        row = idx // cols
+    for idx, (_, logo_img) in enumerate(logos):
+        row, col = divmod(idx, cols)
+        trimmed = trim_whitespace(logo_img)
+        resized = resize_to_fill_ratio_box(trimmed, cell_w, cell_h)
 
-        trimmed = trim_whitespace(logo)
-        resized = resize_to_fill_ratio_box(trimmed, int(cell_width), int(cell_height))
+        # Optional debug: draw the guide box
+        final = add_debug_box(resized, cell_w, cell_h)
 
         img_stream = io.BytesIO()
-        resized.save(img_stream, format="PNG")
+        final.save(img_stream, format="PNG")
         img_stream.seek(0)
 
-        x_offset = (cell_width - resized.width) / 2
-        y_offset = (cell_height - resized.height) / 2
-        left = left_margin + Inches((col * cell_width + x_offset) / 96)
-        top = top_margin + Inches((row * cell_height + y_offset) / 96)
+        x_offset = (cell_w - final.width) / 2
+        y_offset = (cell_h - final.height) / 2
+        left = left_margin + Inches((col * cell_w + x_offset) / 96)
+        top = top_margin + Inches((row * cell_h + y_offset) / 96)
 
         slide.shapes.add_picture(
             img_stream, left, top,
-            width=Inches(resized.width / 96),
-            height=Inches(resized.height / 96)
+            width=Inches(final.width / 96),
+            height=Inches(final.height / 96)
         )
 
 # --- Streamlit UI ---
 st.title("Logo Grid PowerPoint Exporter")
-st.markdown("Upload logos or use preloaded ones below:")
 
 uploaded_files = st.file_uploader("Upload logos", type=["png", "jpg", "jpeg", "webp"], accept_multiple_files=True)
+
 preloaded = load_preloaded_logos()
-selected_preloaded = st.multiselect("Select preloaded logos", options=list(preloaded.keys()))
+selected_preloaded = st.multiselect("Select preloaded logos", options=[name for name, _ in preloaded])
 
 canvas_width_in = st.number_input("Grid width (inches)", min_value=1.0, max_value=20.0, value=10.0)
 canvas_height_in = st.number_input("Grid height (inches)", min_value=1.0, max_value=20.0, value=7.5)
@@ -99,27 +104,29 @@ logos_per_row = st.number_input("Logos per row (optional)", min_value=0, max_val
 if st.button("Generate PowerPoint"):
     images = []
 
-    # Collect uploaded logos with names
     if uploaded_files:
         for f in uploaded_files:
-            name = os.path.splitext(f.name)[0]
+            name = os.path.splitext(f.name)[0].lower()
             image = Image.open(f).convert("RGBA")
-            images.append((name.lower(), image))
+            images.append((name, image))
 
-    # Collect selected preloaded logos
-    for name in selected_preloaded:
-        images.append((name.lower(), preloaded[name]))
+    for name, img in preloaded:
+        if name in [x.lower() for x in selected_preloaded]:
+            images.append((name, img))
 
     if not images:
         st.warning("Please upload or select logos.")
     else:
-        # Sort by name and extract only images
-        images.sort(key=lambda x: x[0])
-        images = [img for _, img in images]
+        # Sort all logos together alphabetically
+        sorted_images = sorted(images, key=lambda x: x[0])
 
         prs = Presentation()
-        create_logo_slide(prs, images, canvas_width_in, canvas_height_in,
-                          logos_per_row if logos_per_row > 0 else None)
+        create_logo_slide(
+            prs, sorted_images,
+            canvas_width_in,
+            canvas_height_in,
+            logos_per_row if logos_per_row > 0 else None
+        )
 
         output = io.BytesIO()
         prs.save(output)
