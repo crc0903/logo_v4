@@ -20,96 +20,74 @@ def load_preloaded_logos():
             logos.append((name.lower(), image))
     return logos
 
-# Trims whitespace or transparency
 def trim_whitespace(image):
     bg = Image.new("RGBA", image.size, (255, 255, 255, 0))
     diff = ImageChops.difference(image, bg)
     bbox = diff.getbbox()
     return image.crop(bbox) if bbox else image
 
-# Resize image proportionally to fill a 5:2 box
-def resize_to_fit_box(image, box_width_px, box_height_px, buffer_ratio=0.9):
+def resize_image_proportionally(image, max_width, max_height):
     img_w, img_h = image.size
-    img_ratio = img_w / img_h
+    ratio = min(max_width / img_w, max_height / img_h)
+    return image.resize((int(img_w * ratio), int(img_h * ratio)), Image.LANCZOS)
 
-    max_width = int(box_width_px * buffer_ratio)
-    max_height = int(box_height_px * buffer_ratio)
-
-    if img_ratio >= (max_width / max_height):
-        new_width = max_width
-        new_height = int(new_width / img_ratio)
-    else:
-        new_height = max_height
-        new_width = int(new_height * img_ratio)
-
-    return image.resize((new_width, new_height), Image.LANCZOS)
-
-# Create a logo grid slide
-def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_row):
+def create_logo_slide(prs, logos, logos_per_row=5):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    canvas_width_px = int(canvas_width_in * 96)
-    canvas_height_px = int(canvas_height_in * 96)
+    slide_width = prs.slide_width
+    slide_height = prs.slide_height
 
-    logo_count = len(logos)
-    cols = logos_per_row if logos_per_row else max(1, round(math.sqrt(logo_count * canvas_width_in / canvas_height_in)))
-    rows = math.ceil(logo_count / cols)
+    cell_width = slide_width / logos_per_row
+    cell_height = cell_width * 2 / 5  # 5:2 box ratio
 
-    cell_width = canvas_width_px / cols
-    cell_height = canvas_height_px / rows
-
-    left_margin = Inches((10 - canvas_width_in) / 2)
-    top_margin = Inches((7.5 - canvas_height_in) / 2)
+    rows = math.ceil(len(logos) / logos_per_row)
 
     for idx, (name, image) in enumerate(logos):
-        col = idx % cols
-        row = idx // cols
+        col = idx % logos_per_row
+        row = idx // logos_per_row
 
         trimmed = trim_whitespace(image)
-        resized = resize_to_fit_box(trimmed, int(cell_width), int(cell_height))
+        resized = resize_image_proportionally(trimmed, cell_width * 0.9, cell_height * 0.9)
 
         img_stream = io.BytesIO()
         resized.save(img_stream, format="PNG")
         img_stream.seek(0)
 
-        x_offset = (cell_width - resized.width) / 2
-        y_offset = (cell_height - resized.height) / 2
-        left = left_margin + Inches((col * cell_width + x_offset) / 96)
-        top = top_margin + Inches((row * cell_height + y_offset) / 96)
+        left = cell_width * col + (cell_width - resized.width) / 2
+        top = cell_height * row + (cell_height - resized.height) / 2
 
         slide.shapes.add_picture(
-            img_stream, left, top,
-            width=Inches(resized.width / 96),
-            height=Inches(resized.height / 96)
+            img_stream,
+            left=left,
+            top=top,
+            width=resized.width,
+            height=resized.height
         )
 
-        # Optional: draw 5x2 guideline box
-        guide_left = left_margin + Inches(col * cell_width / 96)
-        guide_top = top_margin + Inches(row * cell_height / 96)
+        # Add 5:2 guideline box
         guide = slide.shapes.add_shape(
-            autoshape_type_id=1,  # rectangle
-            left=guide_left,
-            top=guide_top,
-            width=Inches(cell_width / 96),
-            height=Inches(cell_height / 96)
+            autoshape_type_id=1,
+            left=cell_width * col,
+            top=cell_height * row,
+            width=cell_width,
+            height=cell_height
         )
         guide.line.color.rgb = RGBColor(100, 100, 100)
-        guide.fill.background()  # transparent fill
+        guide.fill.background()
 
 # --- Streamlit UI ---
 st.title("Logo Grid PowerPoint Exporter")
-st.markdown("Upload logos or use preloaded ones below:")
+st.markdown("Upload logos or select from preloaded options:")
 
 uploaded_files = st.file_uploader("Upload logos", type=["png", "jpg", "jpeg", "webp"], accept_multiple_files=True)
 preloaded = load_preloaded_logos()
 selected_preloaded = st.multiselect("Select preloaded logos", options=sorted([name for name, _ in preloaded]))
 
-canvas_width_in = st.number_input("Grid width (inches)", min_value=1.0, max_value=20.0, value=10.0)
-canvas_height_in = st.number_input("Grid height (inches)", min_value=1.0, max_value=20.0, value=7.5)
-logos_per_row = st.number_input("Logos per row (optional)", min_value=0, max_value=50, value=0)
+logos_per_row = st.number_input("Logos per row", min_value=1, max_value=20, value=5)
 
 if st.button("Generate PowerPoint"):
     logos = []
 
+    # Combine uploaded and selected preloaded logos
     if uploaded_files:
         for f in uploaded_files:
             name = os.path.splitext(f.name)[0].lower()
@@ -123,12 +101,11 @@ if st.button("Generate PowerPoint"):
     if not logos:
         st.warning("Please upload or select logos.")
     else:
-        # Alphabetize all logos together
+        # Alphabetize
         logos.sort(key=lambda x: x[0])
 
         prs = Presentation()
-        create_logo_slide(prs, logos, canvas_width_in, canvas_height_in,
-                          logos_per_row if logos_per_row > 0 else None)
+        create_logo_slide(prs, logos, logos_per_row)
 
         output = io.BytesIO()
         prs.save(output)
