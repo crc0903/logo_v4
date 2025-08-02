@@ -28,7 +28,7 @@ def trim_whitespace(image):
         return image.crop(bbox)
     return image
 
-# ✅ Resize proportionally to fill a 5x2 ratio box, based on cell size
+# ✅ Resize to fit within cell, scaling to width or height depending on logo aspect ratio
 def resize_to_fit_cell(image, cell_width_px, cell_height_px, buffer_ratio=0.9):
     img_w, img_h = image.size
     img_ratio = img_w / img_h
@@ -67,7 +67,7 @@ def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_r
         row = idx // cols
 
         trimmed = trim_whitespace(logo)
-        resized = resize_to_fill_ratio_box(trimmed, int(cell_width), int(cell_height))
+        resized = resize_to_fit_cell(trimmed, int(cell_width), int(cell_height))
 
         img_stream = io.BytesIO()
         resized.save(img_stream, format="PNG")
