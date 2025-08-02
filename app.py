@@ -19,21 +19,22 @@ def load_preloaded_logos():
             logos[name] = image
     return logos
 
-# ✅ Resize proportionally and center in fixed 5x2 box with transparent padding
-def resize_to_fit_box_with_padding(image, box_width_in=5.0, box_height_in=2.0):
-    box_w_px = int(box_width_in * 96)
-    box_h_px = int(box_height_in * 96)
-
+# ✅ Resize to fill as much of a 5x2 box as possible (ratio = 2.5), keeping aspect ratio
+def resize_to_fill_ratio_box(image, cell_width_px, cell_height_px, target_ratio=5 / 2):
     img_w, img_h = image.size
-    ratio = min(box_w_px / img_w, box_h_px / img_h)
-    new_size = (int(img_w * ratio), int(img_h * ratio))
-    resized = image.resize(new_size, Image.LANCZOS)
+    img_ratio = img_w / img_h
 
-    padded = Image.new("RGBA", (box_w_px, box_h_px), (255, 255, 255, 0))
-    paste_x = (box_w_px - resized.width) // 2
-    paste_y = (box_h_px - resized.height) // 2
-    padded.paste(resized, (paste_x, paste_y), resized)
-    return padded
+    if img_ratio > target_ratio:
+        # Logo is wider than 5:2 — fill height, scale width
+        target_height = cell_height_px
+        target_width = int(target_height * img_ratio)
+    else:
+        # Logo is taller than 5:2 — fill width, scale height
+        target_width = cell_width_px
+        target_height = int(target_width / img_ratio)
+
+    resized = image.resize((target_width, target_height), Image.LANCZOS)
+    return resized
 
 def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_row):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -54,18 +55,13 @@ def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_r
         col = idx % cols
         row = idx // cols
 
-        # Resize and pad each logo to exactly 5x2 inches (or less if cell is smaller)
-        resized = resize_to_fit_box_with_padding(
-            logo,
-            box_width_in=min(5.0, cell_width / 96),
-            box_height_in=min(2.0, cell_height / 96)
-        )
+        resized = resize_to_fill_ratio_box(logo, int(cell_width), int(cell_height))
 
         img_stream = io.BytesIO()
         resized.save(img_stream, format="PNG")
         img_stream.seek(0)
 
-        # Center in the cell
+        # Center the resized logo in its cell
         x_offset = (cell_width - resized.width) / 2
         y_offset = (cell_height - resized.height) / 2
         left = left_margin + Inches((col * cell_width + x_offset) / 96)
