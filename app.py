@@ -29,34 +29,23 @@ def trim_whitespace(image):
     return image
 
 # ✅ Resize proportionally to fill a 5x2 ratio box, based on cell size
-def resize_to_fill_ratio_box(image, cell_width_px, cell_height_px, target_ratio=5 / 2, buffer_ratio=0.9):
+def resize_to_fit_cell(image, cell_width_px, cell_height_px, buffer_ratio=0.9):
     img_w, img_h = image.size
     img_ratio = img_w / img_h
 
-    # Apply buffer
     max_width = int(cell_width_px * buffer_ratio)
     max_height = int(cell_height_px * buffer_ratio)
 
-    # Fit based on target ratio logic
-    if img_ratio > target_ratio:
-        # Wide logo — fill height
-        target_height = max_height
-        target_width = int(target_height * img_ratio)
+    if img_ratio >= (max_width / max_height):
+        # Fill width, scale height
+        new_width = max_width
+        new_height = int(new_width / img_ratio)
     else:
-        # Tall logo — fill width
-        target_width = max_width
-        target_height = int(target_width / img_ratio)
+        # Fill height, scale width
+        new_height = max_height
+        new_width = int(new_height * img_ratio)
 
-    # Clamp to buffer box
-    if target_width > max_width:
-        target_width = max_width
-        target_height = int(target_width / img_ratio)
-
-    if target_height > max_height:
-        target_height = max_height
-        target_width = int(target_height * img_ratio)
-
-    return image.resize((target_width, target_height), Image.LANCZOS)
+    return image.resize((new_width, new_height), Image.LANCZOS)
 
 def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_row):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
