@@ -19,7 +19,7 @@ def load_preloaded_logos():
             logos[name] = image
     return logos
 
-# ✅ Trim white or transparent space around the logo
+# Trim white or transparent space around the logo
 def trim_whitespace(image):
     bg = Image.new(image.mode, image.size, (255, 255, 255, 0))  # transparent background
     diff = ImageChops.difference(image, bg)
@@ -28,24 +28,33 @@ def trim_whitespace(image):
         return image.crop(bbox)
     return image
 
-# ✅ Resize to fit within cell, scaling to width or height depending on logo aspect ratio
-def resize_to_fit_cell(image, cell_width_px, cell_height_px, buffer_ratio=0.9):
+# Resize logo to fill a dynamic 5x2 box inside the cell (whichever is limiting)
+def resize_to_fill_5x2_box(image, cell_width_px, cell_height_px, buffer_ratio=0.9):
+    box_ratio = 5 / 2
+    max_box_width = int(cell_width_px * buffer_ratio)
+    max_box_height = int(cell_height_px * buffer_ratio)
+
+    # Fit the largest possible 5x2 box inside the cell
+    if max_box_width / box_ratio <= max_box_height:
+        box_width = max_box_width
+        box_height = int(max_box_width / box_ratio)
+    else:
+        box_height = max_box_height
+        box_width = int(max_box_height * box_ratio)
+
+    # Resize logo proportionally to fit within that box
     img_w, img_h = image.size
     img_ratio = img_w / img_h
 
-    max_width = int(cell_width_px * buffer_ratio)
-    max_height = int(cell_height_px * buffer_ratio)
-
-    if img_ratio >= (max_width / max_height):
-        # Fill width, scale height
-        new_width = max_width
-        new_height = int(new_width / img_ratio)
+    if img_ratio > (box_width / box_height):
+        new_width = box_width
+        new_height = int(box_width / img_ratio)
     else:
-        # Fill height, scale width
-        new_height = max_height
-        new_width = int(new_height * img_ratio)
+        new_height = box_height
+        new_width = int(box_height * img_ratio)
 
-    return image.resize((new_width, new_height), Image.LANCZOS)
+    resized = image.resize((new_width, new_height), Image.LANCZOS)
+    return resized, box_width, box_height
 
 def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_row):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -67,15 +76,15 @@ def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_r
         row = idx // cols
 
         trimmed = trim_whitespace(logo)
-        resized = resize_to_fit_cell(trimmed, int(cell_width), int(cell_height))
+        resized, box_width, box_height = resize_to_fill_5x2_box(trimmed, int(cell_width), int(cell_height))
 
         img_stream = io.BytesIO()
         resized.save(img_stream, format="PNG")
         img_stream.seek(0)
 
-        # Center in the cell
-        x_offset = (cell_width - resized.width) / 2
-        y_offset = (cell_height - resized.height) / 2
+        # Center the logo inside the 5x2 box, and box inside the cell
+        x_offset = (cell_width - box_width) / 2 + (box_width - resized.width) / 2
+        y_offset = (cell_height - box_height) / 2 + (box_height - resized.height) / 2
         left = left_margin + Inches((col * cell_width + x_offset) / 96)
         top = top_margin + Inches((row * cell_height + y_offset) / 96)
 
