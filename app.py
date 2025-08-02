@@ -6,6 +6,7 @@ import math
 from pptx import Presentation
 from pptx.util import Inches
 from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_SHAPE
 
 PRELOADED_LOGO_DIR = "preloaded_logos"
 
@@ -38,8 +39,19 @@ def create_logo_slide(prs, logos, logos_per_row=5):
 
     cell_width = slide_width / logos_per_row
     cell_height = cell_width * 2 / 5  # 5:2 box ratio
-
     rows = math.ceil(len(logos) / logos_per_row)
+
+    # Add grid dimension box (top-left)
+    guide_shape = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE,
+        left=Inches(0.2),
+        top=Inches(0.2),
+        width=cell_width,
+        height=cell_height
+    )
+    guide_shape.line.color.rgb = RGBColor(150, 150, 150)
+    guide_shape.fill.solid()
+    guide_shape.fill.fore_color.rgb = RGBColor(230, 230, 230)
 
     for idx, (name, image) in enumerate(logos):
         col = idx % logos_per_row
@@ -63,16 +75,16 @@ def create_logo_slide(prs, logos, logos_per_row=5):
             height=resized.height
         )
 
-        # Add 5:2 guideline box
-        guide = slide.shapes.add_shape(
-            autoshape_type_id=1,
+        # Guideline around each logo
+        box = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
             left=cell_width * col,
             top=cell_height * row,
             width=cell_width,
             height=cell_height
         )
-        guide.line.color.rgb = RGBColor(100, 100, 100)
-        guide.fill.background()
+        box.line.color.rgb = RGBColor(100, 100, 100)
+        box.fill.background()
 
 # --- Streamlit UI ---
 st.title("Logo Grid PowerPoint Exporter")
@@ -87,7 +99,7 @@ logos_per_row = st.number_input("Logos per row", min_value=1, max_value=20, valu
 if st.button("Generate PowerPoint"):
     logos = []
 
-    # Combine uploaded and selected preloaded logos
+    # Combine uploaded and preloaded logos
     if uploaded_files:
         for f in uploaded_files:
             name = os.path.splitext(f.name)[0].lower()
@@ -101,7 +113,7 @@ if st.button("Generate PowerPoint"):
     if not logos:
         st.warning("Please upload or select logos.")
     else:
-        # Alphabetize
+        # Alphabetize all
         logos.sort(key=lambda x: x[0])
 
         prs = Presentation()
