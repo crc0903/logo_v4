@@ -1,4 +1,3 @@
-
 import streamlit as st
 from PIL import Image
 import os
@@ -20,7 +19,8 @@ def load_preloaded_logos():
             logos[name] = image
     return logos
 
-def resize_to_fit(image, max_width_in=5.0, max_height_in=2.0):
+# ✅ Resize proportionally to fit inside 5x2 inch box
+def resize_to_fit_box(image, max_width_in=5.0, max_height_in=2.0):
     max_width_px = int(max_width_in * 96)
     max_height_px = int(max_height_in * 96)
 
@@ -47,20 +47,25 @@ def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_r
     for idx, logo in enumerate(logos):
         col = idx % cols
         row = idx // cols
-        resized = resize_to_fit(logo)
+
+        # Resize to fit within 5x2 inches (or cell size, whichever is smaller)
+        resized = resize_to_fit_box(logo, max_width_in=min(5, cell_width / 96), max_height_in=min(2, cell_height / 96))
 
         img_stream = io.BytesIO()
         resized.save(img_stream, format="PNG")
         img_stream.seek(0)
 
-        # Center the image within the cell
+        # Center inside the cell
         x_offset = (cell_width - resized.width) / 2
         y_offset = (cell_height - resized.height) / 2
-        
         left = left_margin + Inches((col * cell_width + x_offset) / 96)
         top = top_margin + Inches((row * cell_height + y_offset) / 96)
-        slide.shapes.add_picture(img_stream, left, top, width=Inches(resized.width / 96), height=Inches(resized.height / 96))
 
+        slide.shapes.add_picture(img_stream, left, top,
+                                 width=Inches(resized.width / 96),
+                                 height=Inches(resized.height / 96))
+
+# --- Streamlit UI ---
 st.title("Logo Grid PowerPoint Exporter")
 st.markdown("Upload logos or use preloaded ones below:")
 
@@ -87,7 +92,8 @@ if st.button("Generate PowerPoint"):
         st.warning("Please upload or select logos.")
     else:
         prs = Presentation()
-        create_logo_slide(prs, images, canvas_width_in, canvas_height_in, logos_per_row if logos_per_row > 0 else None)
+        create_logo_slide(prs, images, canvas_width_in, canvas_height_in,
+                          logos_per_row if logos_per_row > 0 else None)
 
         output = io.BytesIO()
         prs.save(output)
