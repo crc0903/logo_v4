@@ -1,5 +1,5 @@
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageChops
 import os
 import io
 import math
@@ -19,7 +19,16 @@ def load_preloaded_logos():
             logos[name] = image
     return logos
 
-# ✅ Resize to fill as much of a 5x2 box as possible (ratio = 2.5), keeping aspect ratio
+# ✅ Trim white or transparent space around the logo
+def trim_whitespace(image):
+    bg = Image.new(image.mode, image.size, (255, 255, 255, 0))  # transparent background
+    diff = ImageChops.difference(image, bg)
+    bbox = diff.getbbox()
+    if bbox:
+        return image.crop(bbox)
+    return image
+
+# ✅ Resize proportionally to fill a 5x2 ratio box, based on cell size
 def resize_to_fill_ratio_box(image, cell_width_px, cell_height_px, target_ratio=5 / 2):
     img_w, img_h = image.size
     img_ratio = img_w / img_h
@@ -55,13 +64,14 @@ def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_r
         col = idx % cols
         row = idx // cols
 
-        resized = resize_to_fill_ratio_box(logo, int(cell_width), int(cell_height))
+        trimmed = trim_whitespace(logo)
+        resized = resize_to_fill_ratio_box(trimmed, int(cell_width), int(cell_height))
 
         img_stream = io.BytesIO()
         resized.save(img_stream, format="PNG")
         img_stream.seek(0)
 
-        # Center the resized logo in its cell
+        # Center in the cell
         x_offset = (cell_width - resized.width) / 2
         y_offset = (cell_height - resized.height) / 2
         left = left_margin + Inches((col * cell_width + x_offset) / 96)
