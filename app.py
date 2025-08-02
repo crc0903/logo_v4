@@ -27,101 +27,88 @@ def trim_whitespace(image):
     bbox = diff.getbbox()
     return image.crop(bbox) if bbox else image
 
-def resize_image_proportionally(image, max_width, max_height):
+def resize_to_5x2_box(image, box_width, box_height):
     img_w, img_h = image.size
-    ratio = min(max_width / img_w, max_height / img_h)
-    return image.resize((int(img_w * ratio), int(img_h * ratio)), Image.LANCZOS)
+    target_ratio = box_width / box_height
+    img_ratio = img_w / img_h
 
-def create_logo_slide(prs, logos, logos_per_row=5):
+    if img_ratio > target_ratio:
+        scale = box_width / img_w
+    else:
+        scale = box_height / img_h
+
+    new_w = int(img_w * scale)
+    new_h = int(img_h * scale)
+    return image.resize((new_w, new_h), Image.LANCZOS)
+
+def create_logo_slide(prs, logos, grid_width_in, grid_height_in):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     slide_width = prs.slide_width
     slide_height = prs.slide_height
 
-    cell_width = slide_width / logos_per_row
-    cell_height = cell_width * 2 / 5  # 5:2 box ratio
-    rows = math.ceil(len(logos) / logos_per_row)
+    grid_width = Inches(grid_width_in)
+    grid_height = Inches(grid_height_in)
+    box_width = grid_width / 5
+    box_height = grid_height / 2
 
-    # Add grid dimension box (top-left)
-    guide_shape = slide.shapes.add_shape(
+    start_x = (slide_width - grid_width) / 2
+    start_y = (slide_height - grid_height) / 2
+
+    # Add guideline box (optional)
+    slide.shapes.add_shape(
         MSO_SHAPE.RECTANGLE,
-        left=Inches(0.2),
-        top=Inches(0.2),
-        width=cell_width,
-        height=cell_height
-    )
-    guide_shape.line.color.rgb = RGBColor(150, 150, 150)
-    guide_shape.fill.solid()
-    guide_shape.fill.fore_color.rgb = RGBColor(230, 230, 230)
+        left=start_x,
+        top=start_y,
+        width=grid_width,
+        height=grid_height
+    ).line.color.rgb = RGBColor(180, 180, 180)
 
-    for idx, (name, image) in enumerate(logos):
-        col = idx % logos_per_row
-        row = idx // logos_per_row
+    for i, (name, img) in enumerate(logos):
+        col = i % 5
+        row = i // 5
 
-        trimmed = trim_whitespace(image)
-        resized = resize_image_proportionally(trimmed, cell_width * 0.9, cell_height * 0.9)
+        x = start_x + col * box_width
+        y = start_y + row * box_height
 
-        img_stream = io.BytesIO()
-        resized.save(img_stream, format="PNG")
-        img_stream.seek(0)
+        img = trim_whitespace(img)
+        img = resize_to_5x2_box(img, box_width, box_height)
 
-        left = cell_width * col + (cell_width - resized.width) / 2
-        top = cell_height * row + (cell_height - resized.height) / 2
+        stream = io.BytesIO()
+        img.save(stream, format="PNG")
+        stream.seek(0)
 
-        slide.shapes.add_picture(
-            img_stream,
-            left=left,
-            top=top,
-            width=resized.width,
-            height=resized.height
-        )
+        left = x + (box_width - img.width) / 2
+        top = y + (box_height - img.height) / 2
+        slide.shapes.add_picture(stream, left=left, top=top, width=img.width, height=img.height)
 
-        # Guideline around each logo
-        box = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE,
-            left=cell_width * col,
-            top=cell_height * row,
-            width=cell_width,
-            height=cell_height
-        )
-        box.line.color.rgb = RGBColor(100, 100, 100)
-        box.fill.background()
+def main():
+    st.title("Logo Grid Exporter (5:2 Boxes)")
 
-# --- Streamlit UI ---
-st.title("Logo Grid PowerPoint Exporter")
-st.markdown("Upload logos or select from preloaded options:")
+    st.markdown("Select logos from below and/or upload your own:")
+    preloaded = load_preloaded_logos()
+    selected = st.multiselect("Preloaded Logos", options=[name for name, _ in preloaded])
+    uploaded_files = st.file_uploader("Upload Logos", accept_multiple_files=True, type=["png", "jpg", "jpeg", "webp"])
 
-uploaded_files = st.file_uploader("Upload logos", type=["png", "jpg", "jpeg", "webp"], accept_multiple_files=True)
-preloaded = load_preloaded_logos()
-selected_preloaded = st.multiselect("Select preloaded logos", options=sorted([name for name, _ in preloaded]))
+    grid_width = st.number_input("Grid width (inches)", min_value=1.0, max_value=15.0, value=10.0, step=0.5)
+    grid_height = st.number_input("Grid height (inches)", min_value=1.0, max_value=10.0, value=4.0, step=0.5)
 
-logos_per_row = st.number_input("Logos per row", min_value=1, max_value=20, value=5)
+    if st.button("Generate PowerPoint"):
+        selected_logos = [item for item in preloaded if item[0] in selected]
 
-if st.button("Generate PowerPoint"):
-    logos = []
+        for file in uploaded_files:
+            name = os.path.splitext(file.name)[0].lower()
+            image = Image.open(file).convert("RGBA")
+            selected_logos.append((name, image))
 
-    # Combine uploaded and preloaded logos
-    if uploaded_files:
-        for f in uploaded_files:
-            name = os.path.splitext(f.name)[0].lower()
-            image = Image.open(f).convert("RGBA")
-            logos.append((name, image))
-
-    for name, image in preloaded:
-        if name in [n.lower() for n in selected_preloaded]:
-            logos.append((name, image))
-
-    if not logos:
-        st.warning("Please upload or select logos.")
-    else:
-        # Alphabetize all
-        logos.sort(key=lambda x: x[0])
+        selected_logos.sort(key=lambda x: x[0])  # Alphabetize all
 
         prs = Presentation()
-        create_logo_slide(prs, logos, logos_per_row)
+        create_logo_slide(prs, selected_logos, grid_width, grid_height)
 
         output = io.BytesIO()
         prs.save(output)
         output.seek(0)
+        st.download_button("Download PowerPoint", data=output, file_name="logo_grid.pptx")
 
-        st.success("PowerPoint created!")
-        st.download_button("Download .pptx", output, file_name="logo_grid.pptx")
+if __name__ == "__main__":
+    main()
