@@ -20,9 +20,12 @@ def load_preloaded_logos():
             logos[name] = image
     return logos
 
-def resize_to_fit(image, target_width, target_height):
+def resize_to_fit(image, max_width_in=5.0, max_height_in=2.0):
+    max_width_px = int(max_width_in * 96)
+    max_height_px = int(max_height_in * 96)
+
     img_w, img_h = image.size
-    ratio = min(target_width / img_w, target_height / img_h)
+    ratio = min(max_width_px / img_w, max_height_px / img_h)
     new_size = (int(img_w * ratio), int(img_h * ratio))
     return image.resize(new_size, Image.LANCZOS)
 
@@ -44,14 +47,18 @@ def create_logo_slide(prs, logos, canvas_width_in, canvas_height_in, logos_per_r
     for idx, logo in enumerate(logos):
         col = idx % cols
         row = idx // cols
-        resized = resize_to_fit(logo, cell_width, cell_height)
+        resized = resize_to_fit(logo)
 
         img_stream = io.BytesIO()
         resized.save(img_stream, format="PNG")
         img_stream.seek(0)
 
-        left = left_margin + Inches(col * (canvas_width_in / cols))
-        top = top_margin + Inches(row * (canvas_height_in / rows))
+        # Center the image within the cell
+        x_offset = (cell_width - resized.width) / 2
+        y_offset = (cell_height - resized.height) / 2
+        
+        left = left_margin + Inches((col * cell_width + x_offset) / 96)
+        top = top_margin + Inches((row * cell_height + y_offset) / 96)
         slide.shapes.add_picture(img_stream, left, top, width=Inches(resized.width / 96), height=Inches(resized.height / 96))
 
 st.title("Logo Grid PowerPoint Exporter")
