@@ -73,7 +73,7 @@ if st.button("Generate PowerPoint"):
             image = Image.open(f).convert("RGBA")
             images.append(image)
 
-    for name in selected_preloaded:
+    for name in sorted(selected_preloaded):
         images.append(preloaded[name])
 
     if not images:
